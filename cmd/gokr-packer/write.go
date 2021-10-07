@@ -175,6 +175,7 @@ var (
 	kernelGlobs = []string{
 		"vmlinuz",
 		"*.dtb",
+		"boot.scr",
 	}
 )
 

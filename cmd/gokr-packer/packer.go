@@ -106,6 +106,10 @@ You can also create your own certificate-key-pair (e.g. by using https://github.
 	testboot = flag.Bool("testboot",
 		false,
 		"Trigger a testboot instead of switching to the new root partition directly")
+
+	forceNoGPT = flag.Bool("force_no_gpt",
+		false,
+		"Force use of MBR-only partition table (no GPT). Only use this for devices that cannot support GPT.")
 )
 
 var gokrazyPkgs []string
@@ -470,7 +474,11 @@ func (p *pack) overwriteDevice(dev string, root *fileInfo) error {
 	if err := verifyNotMounted(dev); err != nil {
 		return err
 	}
-	log.Printf("partitioning %s (GPT + Hybrid MBR)", dev)
+	parttable := "GPT + Hybrid MBR"
+	if !p.UseGPT {
+		parttable = "MBR"
+	}
+	log.Printf("partitioning %s (%s)", dev, parttable)
 
 	f, err := p.partition(*overwrite)
 	if err != nil {
@@ -885,12 +893,14 @@ func logic() error {
 		}
 	}
 
-	newInstallation := updateflag.NewInstallation()
+	useGPT := updateflag.NewInstallation() && !*forceNoGPT
 	p := pack{
 		Pack: packer.NewPackForHost(*hostname),
 	}
-	p.Pack.UsePartuuid = newInstallation
-	p.Pack.UseGPTPartuuid = newInstallation
+	p.Pack.UsePartuuid = useGPT
+	p.Pack.UseGPTPartuuid = useGPT
+	p.Pack.UseGPT = useGPT
+
 	var (
 		updateHttpClient         *http.Client
 		foundMatchingCertificate bool
@@ -941,9 +951,11 @@ func logic() error {
 		}
 		p.UsePartuuid = target.Supports("partuuid")
 		p.UseGPTPartuuid = target.Supports("gpt")
+		p.UseGPT = target.Supports("gpt")
 	}
 	fmt.Printf("\n")
 	fmt.Printf("Feature summary:\n")
+	fmt.Printf("  use GPT: %v\n", p.UseGPT)
 	fmt.Printf("  use PARTUUID: %v\n", p.UsePartuuid)
 	fmt.Printf("  use GPT PARTUUID: %v\n", p.UseGPTPartuuid)
 
