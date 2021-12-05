@@ -24,6 +24,8 @@ import (
 	"github.com/gokrazy/tools/internal/measure"
 	"github.com/gokrazy/tools/packer"
 	"github.com/gokrazy/tools/third_party/systemd-248.3-2"
+
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -175,9 +177,52 @@ var (
 	kernelGlobs = []string{
 		"vmlinuz",
 		"*.dtb",
-		"boot.scr",
 	}
+	kernelManifestFile = "gokrazy-kernel-manifest.yaml"
 )
+
+type kernelManifest struct {
+	BootPartitionGlobs []string          `yaml:"boot-partition-globs"`
+	PartitionTableType string            `yaml:"partition-table-type"`
+	RootDeviceFiles    map[string]uint64 `yaml:"root-device-files"`
+}
+
+func (p *pack) getKernelGlobs() ([]string, error) {
+	kernelDir, err := packer.PackageDir(*kernelPackage)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("\nKernel directory: %s\n", kernelDir)
+
+	// By default, use hardcoded globs
+	partialGlobs := kernelGlobs
+
+	manifestPath := filepath.Join(kernelDir, kernelManifestFile)
+	f, err := os.Open(manifestPath)
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return nil, err
+		}
+
+		// Found manifest - override globs
+		dec := yaml.NewDecoder(f)
+		var manifest kernelManifest
+		if err := dec.Decode(&manifest); err != nil {
+			return nil, err
+		}
+
+		partialGlobs = manifest.BootPartitionGlobs
+	}
+
+	var globs []string
+	for _, glob := range partialGlobs {
+		globs = append(globs, filepath.Join(kernelDir, glob))
+	}
+
+	return globs, nil
+
+}
 
 func (p *pack) writeBoot(f io.Writer, mbrfilename string) error {
 	fmt.Printf("\n")
@@ -210,10 +255,11 @@ func (p *pack) writeBoot(f io.Writer, mbrfilename string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("\nKernel directory: %s\n", kernelDir)
-	for _, glob := range kernelGlobs {
-		globs = append(globs, filepath.Join(kernelDir, glob))
+	fullKernelGlobs, err := p.getKernelGlobs()
+	if err != nil {
+		return err
 	}
+	globs = append(globs, fullKernelGlobs...)
 
 	bufw := bufio.NewWriter(f)
 	fw, err := fat.NewWriter(bufw)
