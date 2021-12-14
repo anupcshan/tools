@@ -106,10 +106,6 @@ You can also create your own certificate-key-pair (e.g. by using https://github.
 	testboot = flag.Bool("testboot",
 		false,
 		"Trigger a testboot instead of switching to the new root partition directly")
-
-	forceNoGPT = flag.Bool("force_no_gpt",
-		false,
-		"Force use of MBR-only partition table (no GPT). Only use this for devices that cannot support GPT.")
 )
 
 var gokrazyPkgs []string
@@ -893,10 +889,24 @@ func logic() error {
 		}
 	}
 
-	useGPT := updateflag.NewInstallation() && !*forceNoGPT
+	useGPT := updateflag.NewInstallation()
 	p := pack{
 		Pack: packer.NewPackForHost(*hostname),
 	}
+
+	{
+		kernelDir, err := packer.PackageDir(*kernelPackage)
+		if err != nil {
+			return err
+		}
+		manifest, err := getKernelManifest(kernelDir)
+		if err != nil {
+			return err
+		}
+
+		useGPT = useGPT && manifest.IsGPT()
+	}
+
 	p.Pack.UsePartuuid = useGPT
 	p.Pack.UseGPTPartuuid = useGPT
 	p.Pack.UseGPT = useGPT

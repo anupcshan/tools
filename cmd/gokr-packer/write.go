@@ -187,17 +187,11 @@ type kernelManifest struct {
 	RootDeviceFiles    map[string]uint64 `yaml:"root-device-files"`
 }
 
-func (p *pack) getKernelGlobs() ([]string, error) {
-	kernelDir, err := packer.PackageDir(*kernelPackage)
-	if err != nil {
-		return nil, err
-	}
+func (m kernelManifest) IsGPT() bool {
+	return m.PartitionTableType == "" || m.PartitionTableType == "gpt"
+}
 
-	fmt.Printf("\nKernel directory: %s\n", kernelDir)
-
-	// By default, use hardcoded globs
-	partialGlobs := kernelGlobs
-
+func getKernelManifest(kernelDir string) (*kernelManifest, error) {
 	manifestPath := filepath.Join(kernelDir, kernelManifestFile)
 	f, err := os.Open(manifestPath)
 	if !os.IsNotExist(err) {
@@ -208,15 +202,31 @@ func (p *pack) getKernelGlobs() ([]string, error) {
 		// Found manifest - override globs
 		dec := yaml.NewDecoder(f)
 		var manifest kernelManifest
-		if err := dec.Decode(&manifest); err != nil {
-			return nil, err
-		}
+		err := dec.Decode(&manifest)
+		return &manifest, err
+	}
 
-		partialGlobs = manifest.BootPartitionGlobs
+	return &kernelManifest{
+		BootPartitionGlobs: kernelGlobs,
+		PartitionTableType: "gpt",
+	}, nil
+}
+
+func getKernelGlobs() ([]string, error) {
+	kernelDir, err := packer.PackageDir(*kernelPackage)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("\nKernel directory: %s\n", kernelDir)
+
+	manifest, err := getKernelManifest(kernelDir)
+	if err != nil {
+		return nil, err
 	}
 
 	var globs []string
-	for _, glob := range partialGlobs {
+	for _, glob := range manifest.BootPartitionGlobs {
 		globs = append(globs, filepath.Join(kernelDir, glob))
 	}
 
@@ -255,7 +265,7 @@ func (p *pack) writeBoot(f io.Writer, mbrfilename string) error {
 	if err != nil {
 		return err
 	}
-	fullKernelGlobs, err := p.getKernelGlobs()
+	fullKernelGlobs, err := getKernelGlobs()
 	if err != nil {
 		return err
 	}
