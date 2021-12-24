@@ -182,9 +182,9 @@ var (
 )
 
 type kernelManifest struct {
-	BootPartitionGlobs []string          `yaml:"boot-partition-globs"`
-	PartitionTableType string            `yaml:"partition-table-type"`
-	RootDeviceFiles    map[string]uint64 `yaml:"root-device-files"`
+	BootPartitionGlobs []string         `yaml:"boot-partition-globs"`
+	PartitionTableType string           `yaml:"partition-table-type"`
+	RootDeviceFiles    map[string]int64 `yaml:"root-device-files"`
 }
 
 func (m kernelManifest) IsGPT() bool {
@@ -203,7 +203,15 @@ func getKernelManifest(kernelDir string) (*kernelManifest, error) {
 		dec := yaml.NewDecoder(f)
 		var manifest kernelManifest
 		err := dec.Decode(&manifest)
-		return &manifest, err
+		if err != nil {
+			return nil, err
+		}
+		rootdevFiles := make(map[string]int64)
+		for fName, off := range manifest.RootDeviceFiles {
+			rootdevFiles[filepath.Join(kernelDir, fName)] = off
+		}
+		manifest.RootDeviceFiles = rootdevFiles
+		return &manifest, nil
 	}
 
 	return &kernelManifest{

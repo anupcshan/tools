@@ -21,3 +21,5 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	rsc.io/goversion v1.2.0 // indirect
 )
+
+replace github.com/gokrazy/updater => github.com/anupcshan/updater v0.0.0-20211224051848-cea0bd6a1881

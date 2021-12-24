@@ -1271,6 +1271,47 @@ func logic() error {
 		}
 	}
 
+	{
+		kernelDir, err := packer.PackageDir(*kernelPackage)
+		if err != nil {
+			return err
+		}
+		manifest, err := getKernelManifest(kernelDir)
+		if err != nil {
+			return err
+		}
+		for fName, offset := range manifest.RootDeviceFiles {
+			start := time.Now()
+			prog.SetStatus(fmt.Sprintf("updating blockdev file %s at offset %d", fName, offset))
+			f, err := os.Open(fName)
+			if err != nil {
+				return err
+			}
+
+			prog.SetTotal(0)
+			if st, err := f.Stat(); err == nil {
+				prog.SetTotal(uint64(st.Size()))
+			}
+
+			if err := target.StreamToOffset("blockdev", offset, io.TeeReader(f, &progress.Writer{})); err != nil {
+				if err == updater.ErrUpdateHandlerNotImplemented {
+					log.Printf("target does not support updating raw block device files yet, ignoring")
+				} else {
+					return fmt.Errorf("updating blockdev file: %v", err)
+				}
+			}
+
+			duration := time.Since(start)
+			transferred := progress.Reset()
+			fmt.Printf("\rTransferred blockdev file %s (%s) at %.2f MiB/s (total: %v)\n",
+				filepath.Base(fName),
+				humanize.Bytes(transferred),
+				float64(transferred)/duration.Seconds()/1024/1024,
+				duration.Round(time.Second),
+			)
+		}
+	}
+
 	if *testboot {
 		if err := target.Testboot(); err != nil {
 			return fmt.Errorf("enable testboot of non-active partition: %v", err)
